@@ -23,12 +23,14 @@
 #endregion
 
 using System;
-using System.Collections.Generic;
 using System.Windows.Forms;
 using MediaPortal.Common;
 using MediaPortal.Common.General;
+using MediaPortal.Common.Services.ServerCommunication;
+using MediaPortal.Common.UserProfileDataManagement;
 using MediaPortal.UI.Presentation.DataObjects;
-using MediaPortal.UI.UserManagement;
+using MediaPortal.UI.ServerCommunication;
+using MediaPortal.UiComponents.SkinBase.General;
 
 namespace MediaPortal.UiComponents.Login
 {
@@ -37,16 +39,26 @@ namespace MediaPortal.UiComponents.Login
   /// </summary>
   public class LoginModel
   {
-    private ItemsList _usersExposed = new ItemsList();
+    private readonly ItemsList _usersExposed = new ItemsList();
     private AbstractProperty _currentUser;
+    const string KEY_PROFILE_ID = "ProfileId";
 
     /// <summary>
     /// constructor
     /// </summary>
     public LoginModel()
     {
-      _currentUser = new WProperty(null);
+      _currentUser = new WProperty(typeof(UserProfile), null);
       LoadUsers();
+    }
+
+    protected IUserProfileDataManagement UserProfileManagement
+    {
+      get
+      {
+        UPnPClientControlPoint controlPoint = ServiceRegistration.Get<IServerConnectionManager>().ControlPoint;
+        return controlPoint != null ? controlPoint.UserProfileDataManagementService : null;
+      }
     }
 
     /// <summary>
@@ -54,16 +66,23 @@ namespace MediaPortal.UiComponents.Login
     /// </summary>
     private void LoadUsers()
     {
-      IUserService userService = ServiceRegistration.Get<IUserService>();
-      // add a few dummy users, later this should be more flexible and handled by a login manager / user account control
-      IUser u1 = userService.AddUser(SystemInformation.ComputerName.ToLower());
-      u1.NeedsPassword = true;
-      u1.LastLogin = new DateTime(2007, 10, 25, 12, 20, 30);
-      u1.UserImage = SystemInformation.ComputerName.ToLower() + ".jpg";
-      IUser u2 = userService.AddUser(SystemInformation.UserName.ToLower());
-      u2.NeedsPassword = false;
-      u2.LastLogin = new DateTime(2007, 10, 26, 10, 30, 13);
-      u2.UserImage = SystemInformation.UserName.ToLower() + ".jpg";
+      UserProfile u1;
+      string profileName = SystemInformation.ComputerName.ToLower();
+      if (!UserProfileManagement.GetProfileByName(profileName, out u1))
+      {
+        // add a few dummy users, later this should be more flexible and handled by a login manager / user account control
+        Guid userId1 = UserProfileManagement.CreateProfile(profileName);
+        if (!UserProfileManagement.GetProfile(userId1, out u1))
+          return;
+      }
+
+      //u1.NeedsPassword = true;
+      //u1.LastLogin = new DateTime(2007, 10, 25, 12, 20, 30);
+      //u1.UserImage = SystemInformation.ComputerName.ToLower() + ".jpg";
+      //IUser u2 = userService.AddUser(SystemInformation.UserName.ToLower());
+      //u2.NeedsPassword = false;
+      //u2.LastLogin = new DateTime(2007, 10, 26, 10, 30, 13);
+      //u2.UserImage = SystemInformation.UserName.ToLower() + ".jpg";
       RefreshUserList();
     }
 
@@ -72,29 +91,25 @@ namespace MediaPortal.UiComponents.Login
     /// </summary>
     private void RefreshUserList()
     {
-      IList<IUser> users = ServiceRegistration.Get<IUserService>().GetUsers();
       // clear the exposed users list
       Users.Clear();
       // add users to expose them
-      foreach (IUser user in users)
+      var users = UserProfileManagement.GetProfiles();
+      foreach (UserProfile user in users)
       {
         if (user == null)
         {
           continue;
         }
-        ListItem buff = new ListItem();
-        buff.SetLabel("UserName", user.UserName);
-        buff.SetLabel("UserImage", user.UserImage);
-        if (user.NeedsPassword)
-        {
-          buff.SetLabel("NeedsPassword", "true");
-        }
-        else
-        {
-          buff.SetLabel("NeedsPassword", "false");
-        }
-        buff.SetLabel("LastLogin", user.LastLogin.ToString("G"));
-        Users.Add(buff);
+        ListItem item = new ListItem();
+        item.SetLabel(Consts.KEY_NAME, user.Name);
+
+        item.AdditionalProperties[KEY_PROFILE_ID] = user.ProfileId;
+        item.SetLabel("UserName", user.Name);
+        //buff.SetLabel("UserImage", user.UserImage);
+        //buff.SetLabel("NeedsPassword", user.NeedsPassword ? "true" : "false");
+        //buff.SetLabel("LastLogin", user.LastLogin.ToString("G"));
+        Users.Add(item);
       }
       // tell the skin that something might have changed
       Users.FireChange();
@@ -106,16 +121,13 @@ namespace MediaPortal.UiComponents.Login
     /// <param name="item"></param>
     public void SelectUser(ListItem item)
     {
-      IList<IUser> users = ServiceRegistration.Get<IUserService>().GetUsers();
+      Guid profileId = (Guid) item.AdditionalProperties[KEY_PROFILE_ID];
 
-      foreach (IUser user in users)
-      {
-        if (user.UserName == item.Labels["UserName"].Evaluate())
-        {
-          CurrentUser = user;
-          return;
-        }
-      }
+      UserProfile userProfile;
+      if (!UserProfileManagement.GetProfile(profileId, out userProfile))
+        return;
+
+      CurrentUser = userProfile;
     }
 
     /// <summary>
@@ -130,9 +142,9 @@ namespace MediaPortal.UiComponents.Login
     /// <summary>
     /// exposes the current user to the skin
     /// </summary>
-    public IUser CurrentUser
+    public UserProfile CurrentUser
     {
-      get { return (IUser) _currentUser.GetValue(); }
+      get { return (UserProfile) _currentUser.GetValue(); }
       set { _currentUser.SetValue(value); }
     }
 
