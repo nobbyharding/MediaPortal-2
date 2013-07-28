@@ -75,6 +75,7 @@
     <Compile Include="FrontendServer\IFrontendServer.cs" />
     <Compile Include="General\WindowsMessaging.cs" />
     <Compile Include="Presentation\Actions\KeyAction.cs" />
+    <Compile Include="Presentation\DataObjects\ObservableCollection.cs" />
     <Compile Include="Presentation\Players\ISpectrumPlayer.cs" />
     <Compile Include="Presentation\Players\ITitlePlayer.cs" />
     <Compile Include="Presentation\Screens\IVideoPlayerSynchronizationStrategy.cs" />
